@@ -40,7 +40,8 @@ class ofdm_receiver(gr.hier_block2):
     (Van de Beeks).
     """
 
-    def __init__(self, fft_length, cp_length, occupied_tones, snr, ks, logging=False):
+    def __init__(self, fft_length, cp_length, occupied_tones, snr, ks, threshold, logging=False):
+    #def __init__(self, fft_length, cp_length, occupied_tones, snr, ks, logging=False):
         """
 	Hierarchical block for receiving OFDM symbols.
 
@@ -74,7 +75,7 @@ class ofdm_receiver(gr.hier_block2):
                                           gr.firdes.WIN_HAMMING)   # filter type
         self.chan_filt = gr.fft_filter_ccc(1, chan_coeffs)
         
-        win = [1 for i in range(fft_length)]
+        win = []#[1 for i in range(fft_length)]
 
         zeros_on_left = int(math.ceil((fft_length - occupied_tones)/2.0))
         ks0 = fft_length*[0,]
@@ -96,8 +97,10 @@ class ofdm_receiver(gr.hier_block2):
         elif SYNC == "pn":
             nco_sensitivity = -2.0/fft_length   # correct for fine frequency
             self.ofdm_sync = ofdm_sync_pn(fft_length,
-                                          cp_length,
-                                          logging)
+                                            cp_length,
+                                            ks0time,
+                                            threshold,
+                                            logging)
         elif SYNC == "pnac":
             nco_sensitivity = -2.0/fft_length   # correct for fine frequency
             self.ofdm_sync = ofdm_sync_pnac(fft_length,
@@ -128,15 +131,39 @@ class ofdm_receiver(gr.hier_block2):
                                                                   cp_length, ks[0])
 
         self.connect(self, self.chan_filt)                            # filter the input channel
-        self.connect(self.chan_filt, self.ofdm_sync)                  # into the synchronization alg.
-        self.connect((self.ofdm_sync,0), self.nco, (self.sigmix,1))   # use sync freq. offset output to derotate input signal
-        self.connect(self.chan_filt, (self.sigmix,0))                 # signal to be derotated
-        self.connect(self.sigmix, (self.sampler,0))                   # sample off timing signal detected in sync alg
-        self.connect((self.ofdm_sync,1), (self.sampler,1))            # timing signal to sample at
+        #self.connect(self.chan_filt, gr.file_sink(gr.sizeof_gr_complex, "rx-filt.dat"))
 
+        use_chan_filt=1
+        if use_chan_filt == 0:
+            self.connect(gr.file_source(gr.sizeof_gr_complex, "chan-filt.dat"), self.ofdm_sync)
+            self.connect(gr.file_source(gr.sizeof_gr_complex, "chan-filt.dat"),gr.delay(gr.sizeof_gr_complex, (fft_length)), (self.sigmix,0))                 # signal to be derotated
+        else:
+            self.connect(self.chan_filt, self.ofdm_sync)                  # into the synchronization alg.
+            self.connect(self.chan_filt,gr.delay(gr.sizeof_gr_complex, (fft_length)), (self.sigmix,0))                 # signal to be derotated
+
+
+        use_chan_fft = 1
+        if use_chan_fft == 0:
+            self.connect(self.fft_demod, gr.null_sink(gr.sizeof_gr_complex*fft_length))
+            self.connect((self.sampler, 1), gr.null_sink(gr.sizeof_char*fft_length))
+            self.connect(gr.file_source(gr.sizeof_gr_complex*fft_length, "symbols_src.dat"), (self.ofdm_frame_acq, 0))
+            self.connect(gr.file_source(gr.sizeof_char*fft_length, "timing.dat"), (self.ofdm_frame_acq, 1))
+        else:
+            self.connect(self.fft_demod, (self.ofdm_frame_acq,0))         # find frame start and equalize signal
+            self.connect((self.sampler,1), (self.ofdm_frame_acq,1))       # send timing signal to signal frame start
+            #self.connect((self.sampler, 1), gr.file_sink(gr.sizeof_char*fft_length, "timing.dat"))
+
+
+
+
+        #self.connect(self.chan_filt, self.ofdm_sync)                  # into the synchronization alg.
+        self.connect((self.ofdm_sync,0), self.nco, (self.sigmix,1))   # use sync freq. offset output to derotate input signal
+        #self.connect(self.chan_filt, (self.sigmix,0))                 # signal to be derotated
+        self.connect(self.sigmix, (self.sampler,0))                   # sample off timing signal detected in sync alg
+        self.connect((self.ofdm_sync,1), gr.delay(gr.sizeof_char, fft_length), (self.sampler,1))            # timing signal to sample at
         self.connect((self.sampler,0), self.fft_demod)                # send derotated sampled signal to FFT
-        self.connect(self.fft_demod, (self.ofdm_frame_acq,0))         # find frame start and equalize signal
-        self.connect((self.sampler,1), (self.ofdm_frame_acq,1))       # send timing signal to signal frame start
+        #self.connect(self.fft_demod, (self.ofdm_frame_acq,0))         # find frame start and equalize signal
+        #self.connect((self.sampler,1), (self.ofdm_frame_acq,1))       # send timing signal to signal frame start
         self.connect((self.ofdm_frame_acq,0), (self,0))               # finished with fine/coarse freq correction,
         self.connect((self.ofdm_frame_acq,1), (self,1))               # frame and symbol timing, and equalization
 

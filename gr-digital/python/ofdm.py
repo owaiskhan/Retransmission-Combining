@@ -204,6 +204,8 @@ class ofdm_demod(gr.hier_block2):
         self._occupied_tones = options.occupied_tones
         self._cp_length = options.cp_length
         self._snr = options.snr
+        self._threshold = options.threshold
+        print "threshold,",self._threshold
 
         # Use freq domain to get doubled-up known symbol for correlation in time domain
         zeros_on_left = int(math.ceil((self._fft_length - self._occupied_tones)/2.0))
@@ -220,6 +222,7 @@ class ofdm_demod(gr.hier_block2):
                                        self._cp_length,
                                        self._occupied_tones,
                                        self._snr, preambles,
+                                       self._threshold,
                                        options.log)
 
         mods = {"bpsk": 2, "qpsk": 4, "8psk": 8, "qam8": 8, "qam16": 16, "qam64": 64, "qam256": 256}
@@ -280,6 +283,9 @@ class ofdm_demod(gr.hier_block2):
                           help="set the number of bits in the cyclic prefix [default=%default]")
         expert.add_option("", "--snr", type="float", default=30.0,
                           help="SNR estimate [default=%default]")
+        expert.add_option("", "--threshold", type="float", default=1.0,
+                          help="cross correlation threshold [default=%default]")
+
     # Make a static method to call before instantiation
     add_options = staticmethod(add_options)
 

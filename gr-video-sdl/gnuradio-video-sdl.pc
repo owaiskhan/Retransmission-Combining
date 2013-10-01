@@ -1,0 +1,11 @@
+prefix=/home/jcorgan/.sys
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: gnuradio-comedi
+Description: GNU Radio blocks for the SDL library
+Requires: gnuradio-core sdl
+Version: 3.5.3
+Libs: -L${libdir} -lgnuradio-video-sdl
+Cflags: -I${includedir}

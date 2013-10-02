@@ -29,6 +29,7 @@
 #include <gr_io_signature.h>
 #include <stdexcept>
 #include <string.h>
+#include <cstdio>
 
 digital_ofdm_mapper_bcv_sptr
 digital_make_ofdm_mapper_bcv (const std::vector<gr_complex> &constellation, unsigned int msgq_limit, 
@@ -56,60 +57,11 @@ digital_ofdm_mapper_bcv::digital_ofdm_mapper_bcv (const std::vector<gr_complex> 
   if (!(d_occupied_carriers <= d_fft_length))
     throw std::invalid_argument("digital_ofdm_mapper_bcv: occupied carriers must be <= fft_length");
 
-  // this is not the final form of this solution since we still use the occupied_tones concept,
-  // which would get us into trouble if the number of carriers we seek is greater than the occupied carriers.
-  // Eventually, we will get rid of the occupied_carriers concept.
-  std::string carriers = "FE7F";
 
-  // A bit hacky to fill out carriers to occupied_carriers length
-  int diff = (d_occupied_carriers - 4*carriers.length()); 
-  while(diff > 7) {
-    carriers.insert(0, "f");
-    carriers.insert(carriers.length(), "f");
-    diff -= 8;
-  }
-
-  // if there's extras left to be processed
-  // divide remaining to put on either side of current map
-  // all of this is done to stick with the concept of a carrier map string that
-  // can be later passed by the user, even though it'd be cleaner to just do this
-  // on the carrier map itself
-  int diff_left=0;
-  int diff_right=0;
-
-  // dictionary to convert from integers to ascii hex representation
-  char abc[16] = {'0', '1', '2', '3', '4', '5', '6', '7', 
-		  '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
-  if(diff > 0) {
-    char c[2] = {0,0};
-
-    diff_left = (int)ceil((float)diff/2.0f);   // number of carriers to put on the left side
-    c[0] = abc[(1 << diff_left) - 1];          // convert to bits and move to ASCI integer
-    carriers.insert(0, c);
-    
-    diff_right = diff - diff_left;	       // number of carriers to put on the right side
-    c[0] = abc[0xF^((1 << diff_right) - 1)];   // convert to bits and move to ASCI integer
-        carriers.insert(carriers.length(), c);
-  }
-  
-  // find out how many zeros to pad on the sides; the difference between the fft length and the subcarrier
-  // mapping size in chunks of four. This is the number to pack on the left and this number plus any 
-  // residual nulls (if odd) will be packed on the right. 
-  diff = (d_fft_length/4 - carriers.length())/2; 
-
-  unsigned int i,j,k;
-  for(i = 0; i < carriers.length(); i++) {
-    char c = carriers[i];                            // get the current hex character from the string
-    for(j = 0; j < 4; j++) {                         // walk through all four bits
-      k = (strtol(&c, NULL, 16) >> (3-j)) & 0x1;     // convert to int and extract next bit
-      if(k) {                                        // if bit is a 1, 
-	d_subcarrier_map.push_back(4*(i+diff) + j);  // use this subcarrier
-      }
-    }
-  }
+  assign_subcarriers();
 
   // make sure we stay in the limit currently imposed by the occupied_carriers
-  if(d_subcarrier_map.size() > d_occupied_carriers) {
+  if(d_data_carriers.size() > d_occupied_carriers) {
     throw std::invalid_argument("digital_ofdm_mapper_bcv: subcarriers allocated exceeds size of occupied carriers");
   }
   
@@ -124,6 +76,49 @@ int digital_ofdm_mapper_bcv::randsym()
 {
   return (rand() % d_constellation.size());
 }
+
+void
+digital_ofdm_mapper_bcv::assign_subcarriers() {
+  int dc_tones = 8;
+  int num_pilots = 8;
+  int pilot_gap = 11;
+
+  int half1_end = (d_occupied_carriers-dc_tones)/2;     //40
+  int half2_start = half1_end+dc_tones;                 //48
+
+  int off = (d_fft_length-d_occupied_carriers)/2;	//4
+  
+  // first half
+  for(int i = 0; i < half1_end; i++) {
+     if(i%pilot_gap == 0)
+        d_pilot_carriers.push_back(i+off);
+     else
+        d_data_carriers.push_back(i+off);
+  }
+
+  // second half
+  for(int i = half2_start, j = 0; i < d_occupied_carriers; i++, j++) {
+     if(j%pilot_gap == 0)
+        d_pilot_carriers.push_back(i+off);
+     else
+        d_data_carriers.push_back(i+off);
+  }
+
+  /* debug carriers */
+  printf("pilot carriers: \n");
+  for(int i = 0; i < d_pilot_carriers.size(); i++) {
+     printf("%d ", d_pilot_carriers[i]); fflush(stdout);
+  }
+  printf("\n");
+
+  printf("data carriers: \n");
+  for(int i = 0; i < d_data_carriers.size(); i++) {
+     printf("%d ", d_data_carriers[i]); fflush(stdout);
+  }
+  printf("\n");
+}
+
+
 
 int
 digital_ofdm_mapper_bcv::work(int noutput_items,
@@ -163,8 +158,7 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
   
   i = 0;
   unsigned char bits = 0;
-  //while((d_msg_offset < d_msg->length()) && (i < d_occupied_carriers)) {
-  while((d_msg_offset < d_msg->length()) && (i < d_subcarrier_map.size())) {
+  while((d_msg_offset < d_msg->length()) && (i < d_data_carriers.size())) {
 
     // need new data to process
     if(d_bit_offset == 0) {
@@ -177,7 +171,7 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
       d_resid |= (((1 << d_nresid)-1) & d_msgbytes) << (d_nbits - d_nresid);
       bits = d_resid;
 
-      out[d_subcarrier_map[i]] = d_constellation[bits];
+      out[d_data_carriers[i]] = d_constellation[bits];
       i++;
 
       d_bit_offset += d_nresid;
@@ -192,7 +186,7 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
 	bits = ((1 << d_nbits)-1) & (d_msgbytes >> d_bit_offset);
 	d_bit_offset += d_nbits;
 	
-	out[d_subcarrier_map[i]] = d_constellation[bits];
+	out[d_data_carriers[i]] = d_constellation[bits];
 	i++;
       }
       else {  // if we can't fit nbits, store them for the next 
@@ -221,8 +215,8 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
     }
 
     //while(i < d_occupied_carriers) {   // finish filling out the symbol
-    while(i < d_subcarrier_map.size()) {   // finish filling out the symbol
-      out[d_subcarrier_map[i]] = d_constellation[randsym()];
+    while(i < d_data_carriers.size()) {   // finish filling out the symbol
+      out[d_data_carriers[i]] = d_constellation[randsym()];
 
       i++;
     }
@@ -232,6 +226,14 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
     d_msg.reset();   			// finished packet, free message
     assert(d_bit_offset == 0);
   }
+
+
+   // now add the pilot symbols //
+   double cur_pilot = 1.0;
+   for(int i = 0; i < d_pilot_carriers.size(); i++) {
+       out[d_pilot_carriers[i]] = gr_complex(cur_pilot, 0.0);
+       cur_pilot = -cur_pilot;
+   }
 
   if (out_flag)
     out_flag[0] = d_pending_flag;

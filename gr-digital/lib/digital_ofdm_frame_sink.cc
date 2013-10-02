@@ -102,17 +102,104 @@ unsigned char digital_ofdm_frame_sink::slicer(const gr_complex x)
   return d_sym_value_out[min_index];
 }
 
-unsigned int digital_ofdm_frame_sink::demapper(const gr_complex *in,
+/* uses pilots - from rawofdm -- optionally returns if needed */
+inline void
+digital_ofdm_frame_sink::equalize_interpolate_dfe(gr_complex *in, gr_complex *factor) 
+{
+  gr_complex phase_error = 0.0;
+
+  float cur_pilot = 1.0;
+  for (unsigned int i = 0; i < d_pilot_carriers.size(); i++) {
+    gr_complex pilot_sym(cur_pilot, 0.0);
+    cur_pilot = -cur_pilot;
+    int di = d_pilot_carriers[i];
+    phase_error += (in[di] * conj(pilot_sym));
+    /*if(d_packetid==6){
+        printf("in: (%f, %f), pilot: (%f, %f) in(rad): (%f, %f)\n", in[di].real(), in[di].imag(), pilot_sym.real(), pilot_sym.imag(),abs(in[di]),arg(in[di]));
+        fflush(stdout);
+    }*/
+  } 
+
+  // update phase equalizer
+  float angle = arg(phase_error);
+
+  /*if(d_packetid==6){
+     std::cout<<"phase error angle: "<<angle<<std::endl;
+  }*/
+  d_freq = d_freq - d_freq_gain*angle;
+  d_phase = d_phase + d_freq - d_phase_gain*angle;
+  if (d_phase >= 2*M_PI) d_phase -= 2*M_PI;
+  else if (d_phase <0) d_phase += 2*M_PI;
+
+  gr_complex carrier = gr_expj(-angle);
+
+  // update DFE based on pilots
+  cur_pilot = 1.0;
+  for (unsigned int i = 0; i < d_pilot_carriers.size(); i++) {
+    gr_complex pilot_sym(cur_pilot, 0.0);
+    cur_pilot = -cur_pilot;
+    int di = d_pilot_carriers[i];
+    gr_complex sigeq = in[di] * carrier * d_dfe[i];
+    // FIX THE FOLLOWING STATEMENT
+    if (norm(sigeq)> 0.001)
+      d_dfe[i] += d_eq_gain * (pilot_sym/sigeq - d_dfe[i]);
+  }
+
+  // equalize all data using interpolated dfe and demap into bytes
+  unsigned int pilot_index = 0;
+  int pilot_carrier_lo = 0;
+  int pilot_carrier_hi = d_pilot_carriers[0];
+  gr_complex pilot_dfe_lo = d_dfe[0];
+  gr_complex pilot_dfe_hi = d_dfe[0];
+
+  /* alternate implementation of lerp */
+  float denom = 1.0/(pilot_carrier_hi - pilot_carrier_lo);					// 1.0/(x_b - x_a)
+
+  for (unsigned int i = 0; i < d_data_carriers.size(); i++) {
+      int di = d_data_carriers[i];
+      if(di > pilot_carrier_hi) {					// 'di' is beyond the current pilot_hi
+	  pilot_index++;						// move to the next pilot
+
+	  pilot_carrier_lo = pilot_carrier_hi;				// the new pilot_lo
+	  pilot_dfe_lo = pilot_dfe_hi;					// the new pilot_dfe_lo
+
+	 if (pilot_index < d_pilot_carriers.size()) {
+	     pilot_carrier_hi = d_pilot_carriers[pilot_index];
+	     pilot_dfe_hi = d_dfe[pilot_index];
+	 }
+	 else {
+	       pilot_carrier_hi = d_occupied_carriers;			// cater to the di's which are beyond the last pilot_carrier
+           //pilot_carrier_hi = d_data_carriers.size()+d_pilot_carriers.size()-1;
+	 }
+	 denom = 1.0/(pilot_carrier_hi - pilot_carrier_lo);
+      }
+
+      float alpha = float(pilot_carrier_hi - di) * denom;
+      //float alpha = float(di - pilot_carrier_lo) * denom;		// (x - x_a)/(x_b - x_a)
+      gr_complex dfe = pilot_dfe_hi + alpha * (pilot_dfe_lo - pilot_dfe_hi);
+      //gr_complex dfe = pilot_dfe_lo + alpha * (pilot_dfe_hi - pilot_dfe_lo);	// y = y_a + (y_b - y_a) * (x - x_a)/(x_b - x_a) 
+      in[di] *= carrier * dfe;
+      /*if(factor != NULL) {
+         factor[i] = gr_expj(angle);
+	 if(norm(dfe) > 0.0f) 
+	    factor[i] /= dfe;
+      }*/
+  }
+}
+
+
+
+
+unsigned int digital_ofdm_frame_sink::demapper(gr_complex *in,
 					       unsigned char *out)
 {
   unsigned int i=0, bytes_produced=0;
-  gr_complex carrier;
 
-  carrier=gr_expj(d_phase);
 
-  gr_complex accum_error = 0.0;
-  //while(i < d_occupied_carriers) {
-  while(i < d_subcarrier_map.size()) {
+  equalize_interpolate_dfe(in, NULL);
+
+
+  while(i < d_data_carriers.size()) {
     if(d_nresid > 0) {
       d_partial_byte |= d_resid;
       d_byte_offset += d_nresid;
@@ -120,24 +207,11 @@ unsigned int digital_ofdm_frame_sink::demapper(const gr_complex *in,
       d_resid = 0;
     }
     
-    //while((d_byte_offset < 8) && (i < d_occupied_carriers)) {
-    while((d_byte_offset < 8) && (i < d_subcarrier_map.size())) {
-      //gr_complex sigrot = in[i]*carrier*d_dfe[i];
-      gr_complex sigrot = in[d_subcarrier_map[i]]*carrier*d_dfe[i];
-      
-      if(d_derotated_output != NULL){
-	d_derotated_output[i] = sigrot;
-      }
-      
-      unsigned char bits = slicer(sigrot);
+    while((d_byte_offset < 8) && (i < d_data_carriers.size())) {
 
-      gr_complex closest_sym = d_sym_position[bits];
-      
-      accum_error += sigrot * conj(closest_sym);
-
-      // FIX THE FOLLOWING STATEMENT
-      if (norm(sigrot)> 0.001) d_dfe[i] +=  d_eq_gain*(closest_sym/sigrot-d_dfe[i]);
-      
+      int di = d_data_carriers[i];
+      unsigned char bits = slicer(in[di]);
+ 
       i++;
 
       if((8 - d_byte_offset) >= d_nbits) {
@@ -163,14 +237,7 @@ unsigned int digital_ofdm_frame_sink::demapper(const gr_complex *in,
     }
   }
   //std::cerr << "accum_error " << accum_error << std::endl;
-
-  float angle = arg(accum_error);
-
-  d_freq = d_freq - d_freq_gain*angle;
-  d_phase = d_phase + d_freq - d_phase_gain*angle;
-  if (d_phase >= 2*M_PI) d_phase -= 2*M_PI;
-  if (d_phase <0) d_phase += 2*M_PI;
-    
+   
   //if(VERBOSE)
   //  std::cerr << angle << "\t" << d_freq << "\t" << d_phase << "\t" << std::endl;
   
@@ -202,56 +269,10 @@ digital_ofdm_frame_sink::digital_ofdm_frame_sink(const std::vector<gr_complex> &
     d_resid(0), d_nresid(0),d_phase(0),d_freq(0),d_phase_gain(phase_gain),d_freq_gain(freq_gain),
     d_eq_gain(0.05)
 {
-  std::string carriers = "FE7F";
-
-  // A bit hacky to fill out carriers to occupied_carriers length
-  int diff = (d_occupied_carriers - 4*carriers.length()); 
-  while(diff > 7) {
-    carriers.insert(0, "f");
-    carriers.insert(carriers.length(), "f");
-    diff -= 8;
-  }
   
-  // if there's extras left to be processed
-  // divide remaining to put on either side of current map
-  // all of this is done to stick with the concept of a carrier map string that
-  // can be later passed by the user, even though it'd be cleaner to just do this
-  // on the carrier map itself
-  int diff_left=0;
-  int diff_right=0;
+  assign_subcarriers();
 
-  // dictionary to convert from integers to ascii hex representation
-  char abc[16] = {'0', '1', '2', '3', '4', '5', '6', '7', 
-		  '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
-  if(diff > 0) {
-    char c[2] = {0,0};
-
-    diff_left = (int)ceil((float)diff/2.0f);  // number of carriers to put on the left side
-    c[0] = abc[(1 << diff_left) - 1];         // convert to bits and move to ASCI integer
-    carriers.insert(0, c);
-    
-    diff_right = diff - diff_left;	      // number of carriers to put on the right side
-    c[0] = abc[0xF^((1 << diff_right) - 1)];  // convert to bits and move to ASCI integer
-    carriers.insert(carriers.length(), c);
-  }
-
-  // It seemed like such a good idea at the time...
-  // because we are only dealing with the occupied_carriers
-  // at this point, the diff_left in the following compensates
-  // for any offset from the 0th carrier introduced
-  unsigned int i,j,k;
-  for(i = 0; i < (d_occupied_carriers/4)+diff_left; i++) {
-    char c = carriers[i];
-    for(j = 0; j < 4; j++) {
-      k = (strtol(&c, NULL, 16) >> (3-j)) & 0x1;
-      if(k) {
-	d_subcarrier_map.push_back(4*i + j - diff_left);
-      }
-    }
-  }
-  
-  // make sure we stay in the limit currently imposed by the occupied_carriers
-  if(d_subcarrier_map.size() > d_occupied_carriers) {
+  if(d_data_carriers.size() > d_occupied_carriers) {
     throw std::invalid_argument("digital_ofdm_mapper_bcv: subcarriers allocated exceeds size of occupied carriers");
   }
 
@@ -268,6 +289,47 @@ digital_ofdm_frame_sink::~digital_ofdm_frame_sink ()
 {
   delete [] d_bytes_out;
 }
+
+void
+digital_ofdm_frame_sink::assign_subcarriers() {
+   int dc_tones = 8;
+   int num_pilots = 8;
+   int pilot_gap = 11;
+ 
+   int half1_end = (d_occupied_carriers-dc_tones)/2;     //40
+   int half2_start = half1_end+dc_tones;                 //48
+ 
+   // first half
+   for(int i = 0; i < half1_end; i++) {
+      if(i%pilot_gap == 0)
+         d_pilot_carriers.push_back(i);
+      else
+         d_data_carriers.push_back(i);
+   }
+ 
+   // second half
+   for(int i = half2_start, j = 0; i < d_occupied_carriers; i++, j++) {
+      if(j%pilot_gap == 0)
+         d_pilot_carriers.push_back(i);
+      else
+         d_data_carriers.push_back(i);
+   }
+ 
+   /* debug carriers */
+   printf("pilot carriers: \n");
+   for(int i = 0; i < d_pilot_carriers.size(); i++) {
+      printf("%d ", d_pilot_carriers[i]); fflush(stdout);
+   }
+   printf("\n");
+ 
+   printf("data carriers: \n");
+   for(int i = 0; i < d_data_carriers.size(); i++) {
+      printf("%d ", d_data_carriers[i]); fflush(stdout);
+   }
+   printf("\n");
+ }
+
+
 
 bool
 digital_ofdm_frame_sink::set_sym_value_out(const std::vector<gr_complex> &sym_position, 
@@ -292,7 +354,7 @@ digital_ofdm_frame_sink::work (int noutput_items,
 			       gr_vector_const_void_star &input_items,
 			       gr_vector_void_star &output_items)
 {
-  const gr_complex *in = (const gr_complex *) input_items[0];
+  gr_complex *in = (gr_complex *) input_items[0];
   const char *sig = (const char *) input_items[1];
   unsigned int j = 0;
   unsigned int bytes=0;

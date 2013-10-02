@@ -70,12 +70,16 @@ protected:
   unsigned char d_resid;
   unsigned int d_nresid;
 
-  std::vector<int> d_subcarrier_map;
+  std::vector<int> d_data_carriers;
+  std::vector<int> d_pilot_carriers;
 
   int randsym();
 
  public:
   ~digital_ofdm_mapper_bcv(void);
+
+
+  void assign_subcarriers();
 
   gr_msg_queue_sptr	msgq() const { return d_msgq; }
 

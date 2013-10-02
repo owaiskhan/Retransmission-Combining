@@ -91,7 +91,8 @@ class DIGITAL_API digital_ofdm_frame_sink : public gr_sync_block
   float d_freq_gain;
   float d_eq_gain;
 
-  std::vector<int> d_subcarrier_map;
+  std::vector<int> d_data_carriers;
+  std::vector<int> d_pilot_carriers;
 
  protected:
   digital_ofdm_frame_sink(const std::vector<gr_complex> &sym_position, 
@@ -110,9 +111,10 @@ class DIGITAL_API digital_ofdm_frame_sink : public gr_sync_block
   }
   
   unsigned char slicer(const gr_complex x);
-  unsigned int demapper(const gr_complex *in,
+  inline void equalize_interpolate_dfe(gr_complex *in, gr_complex *factor);
+  unsigned int demapper(gr_complex *in,
 			unsigned char *out);
-
+  void assign_subcarriers();
   bool set_sym_value_out(const std::vector<gr_complex> &sym_position, 
 			 const std::vector<unsigned char> &sym_value_out);
 

@@ -25,11 +25,20 @@
 #include "config.h"
 #endif
 
+
+#define REFSNRTX 1
+
 #include <digital_ofdm_mapper_bcv.h>
 #include <gr_io_signature.h>
 #include <stdexcept>
 #include <string.h>
 #include <cstdio>
+
+#if REFSNRTX == 1
+#include <fstream>
+std::ofstream fptr_refsym;
+#endif
+
 
 digital_ofdm_mapper_bcv_sptr
 digital_make_ofdm_mapper_bcv (const std::vector<gr_complex> &constellation, unsigned int msgq_limit, 
@@ -66,10 +75,19 @@ digital_ofdm_mapper_bcv::digital_ofdm_mapper_bcv (const std::vector<gr_complex> 
   }
   
   d_nbits = (unsigned long)ceil(log10(float(d_constellation.size())) / log10(2.0));
+
+  #if REFSNRTX == 1
+    fptr_refsym.open("ref_symbols_bpsk.txt");
+  #endif
+
+
 }
 
 digital_ofdm_mapper_bcv::~digital_ofdm_mapper_bcv(void)
 {
+  #if REFSNRTX == 1
+    fptr_refsym.close();
+  #endif
 }
 
 int digital_ofdm_mapper_bcv::randsym()
@@ -174,6 +192,10 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
       out[d_data_carriers[i]] = d_constellation[bits];
       i++;
 
+      #if REFSNRTX == 1
+        fptr_refsym<<(int) bits<<",";
+      #endif
+
       d_bit_offset += d_nresid;
       d_nresid = 0;
       d_resid = 0;
@@ -188,6 +210,10 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
 	
 	out[d_data_carriers[i]] = d_constellation[bits];
 	i++;
+      #if REFSNRTX == 1
+        fptr_refsym<<(int) bits<<",";
+      #endif
+
       }
       else {  // if we can't fit nbits, store them for the next 
 	// saves d_nresid bits of this message where d_nresid < d_nbits
@@ -214,10 +240,21 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
       d_resid = 0;
     }
 
+    #if REFSNRTX == 1
+     int ref_cntr=0;
+     int trace_vals[]={1,0,1,0,0,1,1,1,1,0,0,1,1,0,1,1,1,0,0,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,1,0,1,0,0,0,0,0,0,1,1,0,0,0,1,0,1,1,0,0,1,0,0,0,0,1,0,0,0,1,1,1,1,0,1,1,1,0,0,0,1,0,0,1,1,0,0};
+    #endif
     //while(i < d_occupied_carriers) {   // finish filling out the symbol
     while(i < d_data_carriers.size()) {   // finish filling out the symbol
-      out[d_data_carriers[i]] = d_constellation[randsym()];
 
+      #if REFSNRTX == 1
+        int padbits = trace_vals[ref_cntr];
+        ref_cntr++;
+        out[d_data_carriers[i]] = d_constellation[padbits];
+        fptr_refsym<<(int) padbits<<",";
+      #else
+        out[d_data_carriers[i]] = d_constellation[randsym()];
+      #endif
       i++;
     }
 
@@ -226,6 +263,11 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
     d_msg.reset();   			// finished packet, free message
     assert(d_bit_offset == 0);
   }
+
+
+  #if REFSNRTX == 1
+    fptr_refsym<<(int) bits<<"\n";
+  #endif
 
 
    // now add the pilot symbols //

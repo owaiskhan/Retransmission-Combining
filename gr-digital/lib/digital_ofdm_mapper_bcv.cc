@@ -77,7 +77,7 @@ digital_ofdm_mapper_bcv::digital_ofdm_mapper_bcv (const std::vector<gr_complex> 
   d_nbits = (unsigned long)ceil(log10(float(d_constellation.size())) / log10(2.0));
 
   #if REFSNRTX == 1
-    fptr_refsym.open("ref_symbols_bpsk.txt");
+    fptr_refsym.open("ref_symbols_qpsk.txt");
   #endif
 
 
@@ -242,7 +242,10 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
 
     #if REFSNRTX == 1
      int ref_cntr=0;
-     int trace_vals[]={1,0,1,0,0,1,1,1,1,0,0,1,1,0,1,1,1,0,0,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,1,0,1,0,0,0,0,0,0,1,1,0,0,0,1,0,1,1,0,0,1,0,0,0,0,1,0,0,0,1,1,1,1,0,1,1,1,0,0,0,1,0,0,1,1,0,0};
+     // bpsk
+     //int trace_vals[]={1,0,1,0,0,1,1,1,1,0,0,1,1,0,1,1,1,0,0,1,0,0,1,1,0,0,0,1,1,0,1,1,0,0,1,0,1,0,0,0,0,0,0,1,1,0,0,0,1,0,1,1,0,0,1,0,0,0,0,1,0,0,0,1,1,1,1,0,1,1,1,0,0,0,1,0,0,1,1,0,0};
+     //qpsk
+     int trace_vals[]={3,3,1,0,0,1,0,0,2,2,0,1,1,0,0,3,1,1,3,2,2,0,1,3,1,1,3,2,3,3,1,3,1,1,3,1,2,2,1,3,1,1,2,3,1,2,1,3,1,2,0,3,0,2,1,3,0,1,1,0,0,2,1,0,1,3,0,1,0,2,0,2,3,1,3,1,0,1,2,1,1};
     #endif
     //while(i < d_occupied_carriers) {   // finish filling out the symbol
     while(i < d_data_carriers.size()) {   // finish filling out the symbol

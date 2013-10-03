@@ -113,8 +113,12 @@ class DIGITAL_API digital_ofdm_frame_sink : public gr_sync_block
   unsigned char slicer(const gr_complex x);
   inline void equalize_interpolate_dfe(gr_complex *in, gr_complex *factor);
   unsigned int demapper(gr_complex *in,
-			unsigned char *out);
+			unsigned char *out,unsigned int data_flag);
   void assign_subcarriers();
+  void read_refsymbols_file();
+  void calculate_refsnr(std::vector<double>& subcarrier_snr_ref);
+
+
   bool set_sym_value_out(const std::vector<gr_complex> &sym_position, 
 			 const std::vector<unsigned char> &sym_value_out);
 

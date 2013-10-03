@@ -35,6 +35,15 @@
 #include <string.h>
 
 #define VERBOSE 0
+#define REFSNR 1
+
+#if REFSNR == 1
+#include <fstream>
+unsigned int ofdm_counter;
+std::vector<std::vector<int> > refsym_indices;
+std::vector<double> ref_subcarrier_error;
+std::ofstream outfile_snr;
+#endif
 
 inline void
 digital_ofdm_frame_sink::enter_search()
@@ -191,7 +200,7 @@ digital_ofdm_frame_sink::equalize_interpolate_dfe(gr_complex *in, gr_complex *fa
 
 
 unsigned int digital_ofdm_frame_sink::demapper(gr_complex *in,
-					       unsigned char *out)
+					       unsigned char *out, unsigned int data_flag)
 {
   unsigned int i=0, bytes_produced=0;
 
@@ -211,7 +220,18 @@ unsigned int digital_ofdm_frame_sink::demapper(gr_complex *in,
 
       int di = d_data_carriers[i];
       unsigned char bits = slicer(in[di]);
+
+      #if REFSNR == 1
+      if(data_flag == 1){
+          std::complex<double> ref_value = d_sym_position[refsym_indices[ofdm_counter][i]];
+          std::complex<double> recv_value = in[di];
+          double dist_value = std::pow(std::abs(recv_value - ref_value),2);
+          //printf("i=%d, ofdm_counter=%d, ref_index=%d\n",i,ofdm_counter,refsym_indices[ofdm_counter][i]);
  
+          ref_subcarrier_error[i]+= dist_value;
+      }
+      #endif
+
       i++;
 
       if((8 - d_byte_offset) >= d_nbits) {
@@ -236,6 +256,10 @@ unsigned int digital_ofdm_frame_sink::demapper(gr_complex *in,
       d_partial_byte = 0;
     }
   }
+
+  #if REFSNR == 1
+    if(data_flag==1){ ofdm_counter++;}
+  #endif
   //std::cerr << "accum_error " << accum_error << std::endl;
    
   //if(VERBOSE)
@@ -272,6 +296,13 @@ digital_ofdm_frame_sink::digital_ofdm_frame_sink(const std::vector<gr_complex> &
   
   assign_subcarriers();
 
+  #if REFSNR == 1
+    read_refsymbols_file();
+    ofdm_counter = 0;
+    ref_subcarrier_error.assign(d_data_carriers.size(),0);
+    outfile_snr.open("ref_snr.txt");
+  #endif
+
   if(d_data_carriers.size() > d_occupied_carriers) {
     throw std::invalid_argument("digital_ofdm_mapper_bcv: subcarriers allocated exceeds size of occupied carriers");
   }
@@ -288,7 +319,40 @@ digital_ofdm_frame_sink::digital_ofdm_frame_sink(const std::vector<gr_complex> &
 digital_ofdm_frame_sink::~digital_ofdm_frame_sink ()
 {
   delete [] d_bytes_out;
+
+  #if REFSNR == 1
+    outfile_snr.close();
+  #endif
 }
+
+#if REFSNR == 1
+void
+digital_ofdm_frame_sink::read_refsymbols_file(){
+
+    std::ifstream bit_file("ref_symbols_bpsk.txt");
+    std::string line;
+
+    if(bit_file.is_open()){
+        while (bit_file.good() ){
+            getline(bit_file,line);
+            
+            if(bit_file.eof()){break;}
+
+            std::vector<int> bit_value(d_data_carriers.size());
+
+            for(int i=0; i<d_data_carriers.size(); i++){
+                size_t location = line.find(",");
+                std::string value = line.substr(0,location);
+                bit_value[i] = std::atoi(value.c_str());
+                line = line.substr(location+1);
+            }
+            refsym_indices.push_back(bit_value);
+        }
+   }
+
+    bit_file.close();
+}
+#endif
 
 void
 digital_ofdm_frame_sink::assign_subcarriers() {
@@ -382,7 +446,7 @@ digital_ofdm_frame_sink::work (int noutput_items,
   case STATE_HAVE_SYNC:
     // only demod after getting the preamble signal; otherwise, the 
     // equalizer taps will screw with the PLL performance
-    bytes = demapper(&in[0], d_bytes_out);
+    bytes = demapper(&in[0], d_bytes_out,0);
     
     if (VERBOSE) {
       if(sig[0])
@@ -430,7 +494,7 @@ digital_ofdm_frame_sink::work (int noutput_items,
     break;
       
   case STATE_HAVE_HEADER:
-    bytes = demapper(&in[0], d_bytes_out);
+    bytes = demapper(&in[0], d_bytes_out,1);
 
     if (VERBOSE) {
       if(sig[0])
@@ -451,6 +515,17 @@ digital_ofdm_frame_sink::work (int noutput_items,
 	
 	d_target_queue->insert_tail(msg);		// send it
 	msg.reset();  				// free it up
+
+    #if REFSNR == 1
+        std::vector<double> sub_snr;
+        calculate_refsnr(sub_snr);
+        ofdm_counter=0;
+
+        for(int lp=0; lp<sub_snr.size(); lp++){
+            printf("%2.2f, ",sub_snr[lp]);
+        }
+        printf("\n");
+    #endif
 	
 	enter_search();
 	break;
@@ -464,4 +539,19 @@ digital_ofdm_frame_sink::work (int noutput_items,
   } // switch
 
   return 1;
+}
+
+
+void
+digital_ofdm_frame_sink::calculate_refsnr(std::vector<double>& subcarrier_snr_ref){
+
+    std::vector<double>::iterator it;
+
+    for(it = ref_subcarrier_error.begin(); it != ref_subcarrier_error.end(); it++){
+
+        double snr_value  = 10.0*std::log10(*it/ofdm_counter);
+        subcarrier_snr_ref.push_back(snr_value);
+        outfile_snr<< snr_value<<",";
+    }
+    outfile_snr<<"\n";
 }

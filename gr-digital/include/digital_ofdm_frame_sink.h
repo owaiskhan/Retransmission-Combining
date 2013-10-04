@@ -117,6 +117,7 @@ class DIGITAL_API digital_ofdm_frame_sink : public gr_sync_block
   void assign_subcarriers();
   void read_refsymbols_file();
   void calculate_refsnr(std::vector<double>& subcarrier_snr_ref);
+  void calculate_ltfpreamble_snr();
 
 
   bool set_sym_value_out(const std::vector<gr_complex> &sym_position, 

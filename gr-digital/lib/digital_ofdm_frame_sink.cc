@@ -33,17 +33,27 @@
 #include <stdexcept>
 #include <iostream>
 #include <string.h>
+#include <fstream>
 
 #define VERBOSE 0
 #define REFSNR 1
+#define LTFPREAMBLE 1
 
 #if REFSNR == 1
-#include <fstream>
 unsigned int ofdm_counter;
 std::vector<std::vector<int> > refsym_indices;
 std::vector<double> ref_subcarrier_error;
-std::ofstream outfile_snr;
+std::ofstream outfile_refsnr;
 #endif
+
+#if LTFPREAMBLE == 1
+std::complex<double>** rcvd_ltfpreambles;
+std::vector<double> ltf_subcarrier_snr;
+int* ltf_preamble_rx;
+int preamble_count;
+std::ofstream outfile_ltfsnr;
+#endif
+
 
 inline void
 digital_ofdm_frame_sink::enter_search()
@@ -53,7 +63,38 @@ digital_ofdm_frame_sink::enter_search()
 
   d_state = STATE_SYNC_SEARCH;
 
+  #if LTFPREAMBLE == 1
+    preamble_count = 0;
+  #endif
 }
+
+#if LTFPREAMBLE == 1
+void
+digital_ofdm_frame_sink::calculate_ltfpreamble_snr(){
+
+    std::complex<double> h1,h2;
+    std::complex<double>* h;
+    h = new std::complex<double>[d_data_carriers.size()];
+    double noise=0;
+
+    for(int i=0; i < d_data_carriers.size(); i++){
+        //estimate channel
+        h1 = rcvd_ltfpreambles[0][i]*(double)ltf_preamble_rx[i];
+        h2 = rcvd_ltfpreambles[1][i]*(double)ltf_preamble_rx[i];
+        h[i] = (h1+h2)/2.0;
+        noise += std::pow(std::abs(rcvd_ltfpreambles[0][i] - rcvd_ltfpreambles[1][i]),2);
+    } 
+    noise/= (2*d_data_carriers.size());
+
+    for(int j=0; j < d_data_carriers.size(); j++){
+        ltf_subcarrier_snr[j] = 10.0*log10(std::pow(std::abs(h[j]),2)/noise); 
+        outfile_ltfsnr<<ltf_subcarrier_snr[j]<<",";
+    }
+    outfile_ltfsnr<<"\n";
+
+    free(h);
+}
+#endif
     
 inline void
 digital_ofdm_frame_sink::enter_have_sync()
@@ -301,12 +342,30 @@ digital_ofdm_frame_sink::digital_ofdm_frame_sink(const std::vector<gr_complex> &
     read_refsymbols_file();
     ofdm_counter = 0;
     ref_subcarrier_error.assign(d_data_carriers.size(),0);
-    outfile_snr.open("ref_snr_qpsk.txt");
+    outfile_refsnr.open("ref_snr_qpsk.txt");
   #endif
 
   if(d_data_carriers.size() > d_occupied_carriers) {
     throw std::invalid_argument("digital_ofdm_mapper_bcv: subcarriers allocated exceeds size of occupied carriers");
   }
+
+
+  #if LTFPREAMBLE == 1
+    int ltf_preamble96[] = {1,1,-1,-1,1,1,-1,1,-1,1,1,1,1,1,1,-1,-1,1,1,-1,1,-1,1, -1, -1,1,1, -1,1, -1,1, -1, -1, -1, -1, -1,1,1, -1, -1,1, -1,1,-1,0,0,0,0,0,0,0,0,1,1,-1,-1,1,1,-1,1,-1,1,1,1,1,1,1,-1,-1,1,1,-1,1,-1,1, -1, -1,1,1, -1,1, -1,1, -1, -1, -1, -1, -1,1,1, -1, -1,1, -1,1,-1};
+
+    ltf_preamble_rx = new int[d_data_carriers.size()];
+    for(int ltf=0; ltf < d_data_carriers.size(); ltf++){
+        ltf_preamble_rx[ltf] = ltf_preamble96[d_data_carriers[ltf]];
+    }
+
+    int d_ltfpreamble_size = d_data_carriers.size();
+    rcvd_ltfpreambles = new std::complex<double>*[2];
+    rcvd_ltfpreambles[0] = new std::complex<double>[d_ltfpreamble_size];
+    rcvd_ltfpreambles[1] = new std::complex<double>[d_ltfpreamble_size];
+
+    ltf_subcarrier_snr = std::vector<double>(d_data_carriers.size());
+    outfile_ltfsnr.open("ltf_snr_qpsk.txt");
+  #endif
 
   d_bytes_out = new unsigned char[d_occupied_carriers];
   d_dfe.resize(occupied_carriers);
@@ -322,7 +381,15 @@ digital_ofdm_frame_sink::~digital_ofdm_frame_sink ()
   delete [] d_bytes_out;
 
   #if REFSNR == 1
-    outfile_snr.close();
+    outfile_refsnr.close();
+  #endif
+
+  #if LTFPREAMBLE == 1
+    free(ltf_preamble_rx);
+    free(rcvd_ltfpreambles[0]);
+    free(rcvd_ltfpreambles[1]);
+    free(rcvd_ltfpreambles);
+    outfile_ltfsnr.close();
   #endif
 }
 
@@ -448,7 +515,23 @@ digital_ofdm_frame_sink::work (int noutput_items,
     // only demod after getting the preamble signal; otherwise, the 
     // equalizer taps will screw with the PLL performance
     bytes = demapper(&in[0], d_bytes_out,0);
-    
+
+    #if LTFPREAMBLE == 1
+    // read preambles. only data subcarriers. for now ignoring pilot subs
+
+    if(preamble_count < 2){
+        for (int pl = 0; pl < d_data_carriers.size(); pl++){
+            rcvd_ltfpreambles[preamble_count][pl] = in[d_data_carriers[pl]];
+        }
+        preamble_count += 1;
+        break;
+    }
+    else if(preamble_count == 2){
+        calculate_ltfpreamble_snr();
+        preamble_count+=1;
+    }
+    #endif
+    printf("preamble count=%d\n",preamble_count); 
     if (VERBOSE) {
       if(sig[0])
 	printf("ERROR -- Found SYNC in HAVE_SYNC\n");
@@ -557,7 +640,7 @@ digital_ofdm_frame_sink::calculate_refsnr(std::vector<double>& subcarrier_snr_re
         double noise_value = *it/ofdm_counter;
         double snr_value  = 10.0*std::log10(1/noise_value);
         subcarrier_snr_ref.push_back(snr_value);
-        outfile_snr<< snr_value<<",";
+        outfile_refsnr<< snr_value<<",";
     }
-    outfile_snr<<"\n";
+    outfile_refsnr<<"\n";
 }

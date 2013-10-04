@@ -27,6 +27,7 @@
 
 
 #define REFSNRTX 1
+#define LTFPREAMBLE 1
 
 #include <digital_ofdm_mapper_bcv.h>
 #include <gr_io_signature.h>
@@ -37,6 +38,13 @@
 #if REFSNRTX == 1
 #include <fstream>
 std::ofstream fptr_refsym;
+#endif
+
+#if LTFPREAMBLE == 1
+int* ltf_preamble;
+int d_ltfpreamble_size;
+int ltf_counter,ltf_preamble_done;
+std::vector<int> d_ltfpreamble_carriers;
 #endif
 
 
@@ -66,8 +74,25 @@ digital_ofdm_mapper_bcv::digital_ofdm_mapper_bcv (const std::vector<gr_complex> 
   if (!(d_occupied_carriers <= d_fft_length))
     throw std::invalid_argument("digital_ofdm_mapper_bcv: occupied carriers must be <= fft_length");
 
-
   assign_subcarriers();
+
+
+  #if LTFPREAMBLE == 1
+    int ltf_preamble_tmp[]= {1,1,-1,-1,1,1,-1,1,-1,1,1,1,1,1,1,-1,-1,1,1,-1,1,-1,
+                1, -1, -1,1,1, -1,1, -1,1, -1, -1, -1, -1, -1,1,1, -1, -1,1, -1,1,-1,
+                1,1,-1,-1,1,1,-1,1,-1,1,1,1,1,1,1,-1,-1,1,1,-1,1,-1,
+                1, -1, -1,1,1, -1,1, -1,1, -1, -1, -1, -1, -1,1,1, -1, -1,1, -1,1,-1};
+
+    d_ltfpreamble_size = d_data_carriers.size()+d_pilot_carriers.size();
+    ltf_preamble = new int[d_ltfpreamble_size];
+    memcpy(ltf_preamble,&ltf_preamble_tmp[0],sizeof(int)*d_ltfpreamble_size);
+
+    printf("d_ltfpreamble size:%d\n",d_ltfpreamble_size);
+    for(int i=0; i<d_ltfpreamble_size; i++){
+        printf("%d,",ltf_preamble[i]);
+    }
+    printf("\n");
+  #endif
 
   // make sure we stay in the limit currently imposed by the occupied_carriers
   if(d_data_carriers.size() > d_occupied_carriers) {
@@ -87,6 +112,7 @@ digital_ofdm_mapper_bcv::~digital_ofdm_mapper_bcv(void)
 {
   #if REFSNRTX == 1
     fptr_refsym.close();
+    free(ltf_preamble);
   #endif
 }
 
@@ -112,6 +138,8 @@ digital_ofdm_mapper_bcv::assign_subcarriers() {
         d_pilot_carriers.push_back(i+off);
      else
         d_data_carriers.push_back(i+off);
+
+     d_ltfpreamble_carriers.push_back(i+off);
   }
 
   // second half
@@ -120,6 +148,8 @@ digital_ofdm_mapper_bcv::assign_subcarriers() {
         d_pilot_carriers.push_back(i+off);
      else
         d_data_carriers.push_back(i+off);
+
+     d_ltfpreamble_carriers.push_back(i+off);
   }
 
   /* debug carriers */
@@ -158,6 +188,11 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
     d_msg_offset = 0;
     d_bit_offset = 0;
     d_pending_flag = 1;			   // new packet, write start of packet flag
+
+    #if LTFPREAMBLE == 1
+    ltf_preamble_done = 0;
+    ltf_counter = 0;
+    #endif
     
     if((d_msg->length() == 0) && (d_msg->type() == 1)) {
       d_msg.reset();
@@ -174,6 +209,27 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
   // Initialize all bins to 0 to set unused carriers
   memset(out, 0, d_fft_length*sizeof(gr_complex));
   
+ #if LTFPREAMBLE == 1
+ if(ltf_preamble_done == 0){
+     generateLTFPreamble(out);
+
+     if (out_flag)
+       out_flag[0] = d_pending_flag;
+     d_pending_flag = 0;
+
+     ltf_counter += 1;
+
+     if(ltf_counter == 2){
+       ltf_preamble_done = 1;
+     }
+     /*for (int ll=0; ll<noutput_items; ll++){
+       printf(" %f + %f j\n",out[ll].real(),out[ll].imag());
+     }*/
+     return 1;
+ }
+#endif
+
+
   i = 0;
   unsigned char bits = 0;
   while((d_msg_offset < d_msg->length()) && (i < d_data_carriers.size())) {
@@ -286,3 +342,22 @@ digital_ofdm_mapper_bcv::work(int noutput_items,
 
   return 1;  // produced symbol
 }
+
+#if LTFPREAMBLE == 1
+void
+digital_ofdm_mapper_bcv::generateLTFPreamble(gr_complex* out){
+
+    //unsigned int i = 0;
+
+    for(int i=0; i < d_ltfpreamble_carriers.size(); i++){
+        out[d_ltfpreamble_carriers[i]] = ltf_preamble[i];
+    }
+
+    /*while( i < d_ltf_preamble_carriers.size()){
+        out[d_ltfpreamble_carriers[i]] = ltf_preamble[i];
+        i++;
+    }*/
+    //printf("generating ltf preamble.\n");
+
+}
+#endif

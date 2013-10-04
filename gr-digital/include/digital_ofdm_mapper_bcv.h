@@ -80,6 +80,7 @@ protected:
 
 
   void assign_subcarriers();
+  void generateLTFPreamble(gr_complex* out);
 
   gr_msg_queue_sptr	msgq() const { return d_msgq; }
 

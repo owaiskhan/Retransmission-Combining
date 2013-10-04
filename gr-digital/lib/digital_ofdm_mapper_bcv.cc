@@ -27,7 +27,7 @@
 
 
 #define REFSNRTX 1
-#define LTFPREAMBLE 1
+#define LTFPREAMBLE 0
 
 #include <digital_ofdm_mapper_bcv.h>
 #include <gr_io_signature.h>
@@ -112,6 +112,8 @@ digital_ofdm_mapper_bcv::~digital_ofdm_mapper_bcv(void)
 {
   #if REFSNRTX == 1
     fptr_refsym.close();
+  #endif
+  #if LTFPREAMBLE == 1
     free(ltf_preamble);
   #endif
 }
@@ -139,7 +141,9 @@ digital_ofdm_mapper_bcv::assign_subcarriers() {
      else
         d_data_carriers.push_back(i+off);
 
+     #if LTFPREAMBLE == 1
      d_ltfpreamble_carriers.push_back(i+off);
+     #endif
   }
 
   // second half
@@ -149,7 +153,9 @@ digital_ofdm_mapper_bcv::assign_subcarriers() {
      else
         d_data_carriers.push_back(i+off);
 
+     #if LTFPREAMBLE == 1
      d_ltfpreamble_carriers.push_back(i+off);
+     #endif
   }
 
   /* debug carriers */

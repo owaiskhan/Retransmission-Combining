@@ -105,7 +105,7 @@ def main():
             if(pktno % 2 == 0):
                 data = (pkt_size) * chr(3 & 0xff)
             else:
-                data = (pkt_size) * chr(4 & 0xff)
+                data = (pkt_size) * chr(3 & 0xff)
             #data = (pkt_size - 2) * chr(pktno & 0xff) 
             #data = (pkt_size - 2) * chr(0x34)
         else:

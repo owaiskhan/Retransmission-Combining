@@ -225,8 +225,9 @@ unsigned int digital_ofdm_frame_sink::demapper(gr_complex *in,
       if(data_flag == 1){
           std::complex<double> ref_value = d_sym_position[refsym_indices[ofdm_counter][i]];
           std::complex<double> recv_value = in[di];
+          //std::cout<<"recv symbol: "<<recv_value<<" ref symbol: "<<ref_value<<std::endl;
           double dist_value = std::pow(std::abs(recv_value - ref_value),2);
-          //printf("i=%d, ofdm_counter=%d, ref_index=%d\n",i,ofdm_counter,refsym_indices[ofdm_counter][i]);
+          //printf("i=%d, ofdm_counter=%d, ref_index=%d dist value=%f\n",i,ofdm_counter,refsym_indices[ofdm_counter][i],dist_value);
  
           ref_subcarrier_error[i]+= dist_value;
       }
@@ -300,7 +301,7 @@ digital_ofdm_frame_sink::digital_ofdm_frame_sink(const std::vector<gr_complex> &
     read_refsymbols_file();
     ofdm_counter = 0;
     ref_subcarrier_error.assign(d_data_carriers.size(),0);
-    outfile_snr.open("ref_snr.txt");
+    outfile_snr.open("ref_snr_qpsk.txt");
   #endif
 
   if(d_data_carriers.size() > d_occupied_carriers) {
@@ -329,7 +330,7 @@ digital_ofdm_frame_sink::~digital_ofdm_frame_sink ()
 void
 digital_ofdm_frame_sink::read_refsymbols_file(){
 
-    std::ifstream bit_file("ref_symbols_bpsk.txt");
+    std::ifstream bit_file("ref_symbols_qpsk.txt");
     std::string line;
 
     if(bit_file.is_open()){
@@ -520,11 +521,14 @@ digital_ofdm_frame_sink::work (int noutput_items,
         std::vector<double> sub_snr;
         calculate_refsnr(sub_snr);
         ofdm_counter=0;
+        std::fill(ref_subcarrier_error.begin(),ref_subcarrier_error.end(),0);
 
+        /*
         for(int lp=0; lp<sub_snr.size(); lp++){
             printf("%2.2f, ",sub_snr[lp]);
         }
         printf("\n");
+        */
     #endif
 	
 	enter_search();
@@ -549,7 +553,9 @@ digital_ofdm_frame_sink::calculate_refsnr(std::vector<double>& subcarrier_snr_re
 
     for(it = ref_subcarrier_error.begin(); it != ref_subcarrier_error.end(); it++){
 
-        double snr_value  = 10.0*std::log10(*it/ofdm_counter);
+        //FIXME: ref_subcarrier_error should be initialized to zero after calculation
+        double noise_value = *it/ofdm_counter;
+        double snr_value  = 10.0*std::log10(1/noise_value);
         subcarrier_snr_ref.push_back(snr_value);
         outfile_snr<< snr_value<<",";
     }

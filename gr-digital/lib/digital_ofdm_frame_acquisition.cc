@@ -78,6 +78,12 @@ digital_ofdm_frame_acquisition::digital_ofdm_frame_acquisition (unsigned occupie
       d_phase_lut[j + i*MAX_NUM_SYMBOLS] =  gr_expj(-M_TWOPI*d_cplen/d_fft_length*(i-d_freq_shift_len)*j);
     }
   }
+
+
+  std::stringstream str;
+  str << name() << unique_id();
+  d_me = pmt::pmt_string_to_symbol(str.str());
+  d_key = pmt::pmt_string_to_symbol("snr");
 }
 
 digital_ofdm_frame_acquisition::~digital_ofdm_frame_acquisition(void)
@@ -130,6 +136,7 @@ digital_ofdm_frame_acquisition::correlate(const gr_complex *symbol, int zeros_on
   
   // set the coarse frequency offset relative to the edge of the occupied tones
   d_coarse_freq = index - zeros_on_left;
+  printf("coarse_freq: %d\n", d_coarse_freq); fflush(stdout);
 }
 
 void
@@ -190,6 +197,28 @@ digital_ofdm_frame_acquisition::general_work(int noutput_items,
     correlate(symbol, zeros_on_left);
     calculate_equalizer(symbol, zeros_on_left);
     signal_out[0] = 1;
+
+   // Issue a tag with the SNR data
+    d_snr_est = 10.0;
+    int64_t nwritten = nitems_written(0);
+    //printf("nwritten = %d\n",nwritten);
+    std::vector<double> snr_values;
+    for(int i=0; i<d_occupied_carriers; i++){
+        double tmp = 1.0/pow(abs(d_hestimate[i]),2);
+        snr_values.push_back(tmp);
+    }
+    pmt::pmt_t pmt_vec = pmt::pmt_make_f64vector(d_occupied_carriers, 0.0);
+    size_t vec_size;
+    double *elements = pmt_f64vector_writable_elements(pmt_vec, vec_size); 
+
+    for(int i=0; i<vec_size; i++){ elements[i] = snr_values[i];}
+    add_item_tag(0,            // stream ID
+         nwritten,     // tag's sample number
+         d_key,        // snr key
+         pmt_vec,      // SNR
+         d_me);        // block src id
+
+
   }
   else {
     signal_out[0] = 0;

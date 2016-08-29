@@ -105,6 +105,8 @@ protected:
    */
   float snr() { return d_snr_est; }
 
+  pmt::pmt_t d_key, d_me;
+
   ~digital_ofdm_frame_acquisition(void);
   int general_work(int noutput_items,
 		   gr_vector_int &ninput_items,

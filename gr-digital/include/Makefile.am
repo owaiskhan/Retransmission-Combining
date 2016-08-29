@@ -35,6 +35,8 @@ grinclude_HEADERS = 				\
 	digital_costas_loop_cc.h		\
 	digital_cma_equalizer_cc.h		\
 	digital_crc32.h				\
+	digital_fec_decode.h				\
+	digital_fec_encode.h				\
 	digital_fll_band_edge_cc.h		\
 	digital_lms_dd_equalizer_cc.h		\
 	digital_kurtotic_equalizer_cc.h 	\
@@ -44,11 +46,19 @@ grinclude_HEADERS = 				\
 	digital_ofdm_cyclic_prefixer.h		\
 	digital_ofdm_frame_acquisition.h	\
 	digital_ofdm_frame_sink.h		\
+	digital_ofdm_partialcomb_receiver.h		\
 	digital_ofdm_insert_preamble.h		\
+	digital_ofdm_global.h		\
+	digital_ofdm_deinterleaver.h		\
+	digital_ofdm_interleaver.h		\
 	digital_ofdm_mapper_bcv.h		\
 	digital_ofdm_sampler.h			\
+	digital_ofdm_rate_adaptation.h			\
+	digital_ofdm_effsnr_ra.h			\
+	digital_ofdm_smart_ra.h			\
+	digital_ofdm_refsymbols.h			\
 	digital_probe_mpsk_snr_est_c.h		\
 	digital_gmskmod_bc.h 			\
 	digital_cpmmod_bc.h
 
-libgnuradio_digital_la_LDFLAGS = $(NO_UNDEFINED) $(LTVERSIONFLAGS)
+libgnuradio_digital_la_LDFLAGS = $(NO_UNDEFINED) $(LTVERSIONFLAGS) $(ITPPLDFLAGS)

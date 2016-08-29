@@ -205,7 +205,15 @@ class ofdm_demod(gr.hier_block2):
         self._cp_length = options.cp_length
         self._snr = options.snr
         self._threshold = options.threshold
+        self._ra = options.rate_adapt
+        self._txgain = options.tx_gain
+        self._bwintf = options.bw_intf
+        self._run = options.run
+        print "ra=",self._ra
+        print "run=",self._run
         print "threshold,",self._threshold
+        print "txgain=",self._txgain
+        print "bwintf=",self._bwintf
 
         # Use freq domain to get doubled-up known symbol for correlation in time domain
         zeros_on_left = int(math.ceil((self._fft_length - self._occupied_tones)/2.0))
@@ -243,10 +251,21 @@ class ofdm_demod(gr.hier_block2):
 
         phgain = 0.25
         frgain = phgain*phgain / 4.0
-        self.ofdm_demod = digital_swig.ofdm_frame_sink(rotated_const, range(arity),
+        if 0:
+            self.ofdm_demod = digital_swig.ofdm_frame_sink(rotated_const, range(arity),
                                                        self._rcvd_pktq,
                                                        self._occupied_tones,
                                                        phgain, frgain)
+        else:
+            self.ofdm_demod = digital_swig.ofdm_partialcomb_receiver(rotated_const, range(arity),
+                                                       self._rcvd_pktq,
+                                                       self._occupied_tones,
+                                                       self._ra,
+                                                       self._txgain,
+                                                       self._bwintf,
+                                                       self._run,
+                                                       phgain, frgain)
+
 
         self.connect(self, self.ofdm_recv)
         self.connect((self.ofdm_recv, 0), (self.ofdm_demod, 0))
@@ -255,7 +274,9 @@ class ofdm_demod(gr.hier_block2):
         # added output signature to work around bug, though it might not be a bad
         # thing to export, anyway
         self.connect(self.ofdm_recv.chan_filt, self)
-
+        #self.connect((self.ofdm_recv,0),gr.file_sink(gr.sizeof_gr_complex*self._occupied_tones,"ofdm_frame_sink0_c.dat"))
+        #self.connect((self.ofdm_recv,1),gr.file_sink(gr.sizeof_char,"ofdm_frame_sink1_char.dat"))
+ 
         if options.log:
             self.connect(self.ofdm_demod,
                          gr.file_sink(gr.sizeof_gr_complex*self._occupied_tones,
@@ -285,6 +306,18 @@ class ofdm_demod(gr.hier_block2):
                           help="SNR estimate [default=%default]")
         expert.add_option("", "--threshold", type="float", default=1.0,
                           help="cross correlation threshold [default=%default]")
+        expert.add_option("", "--rate-adapt", type="intx", default=0,
+                          help="rate adaptation scheme [default=%default]")
+        expert.add_option("", "--tx-gain", type="intx", default=20,
+                          help="tx-gain [default=%default]")
+        expert.add_option("", "--bw-intf", type="intx", default=0,
+                          help="intf bandwidth pct. overlap [default=%default]")
+        expert.add_option("", "--run", type="intx", default=0,
+                          help="run number [default=%default]")
+
+
+
+
 
     # Make a static method to call before instantiation
     add_options = staticmethod(add_options)

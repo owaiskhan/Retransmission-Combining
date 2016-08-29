@@ -29,7 +29,8 @@ AM_CPPFLAGS = \
 	$(GR_DIGITAL_INCLUDES) \
 	$(STD_DEFINES_AND_INCLUDES) \
 	$(PYTHON_CPPFLAGS) \
-	$(WITH_INCLUDES)
+	$(WITH_INCLUDES) \
+    $(ITPPCFLAGS)
 
 TOP_SWIG_DOC_IFILES = \
 	digital_swig_doc.i
@@ -88,6 +89,7 @@ digital_swig_swiginclude_headers =		\
 	digital_ofdm_cyclic_prefixer.i		\
 	digital_ofdm_frame_acquisition.i	\
 	digital_ofdm_frame_sink.i		\
+	digital_ofdm_partialcomb_receiver.i		\
 	digital_ofdm_insert_preamble.i		\
 	digital_ofdm_mapper_bcv.i		\
 	digital_ofdm_sampler.i			\

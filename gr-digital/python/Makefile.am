@@ -57,6 +57,7 @@ digital_PYTHON = \
 	gmsk.py			\
 	modulation_utils.py	\
 	ofdm.py			\
+	offline_decoder.py			\
 	ofdm_packet_utils.py	\
 	ofdm_receiver.py	\
 	ofdm_sync_fixed.py	\

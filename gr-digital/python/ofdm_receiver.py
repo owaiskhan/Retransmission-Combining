@@ -40,7 +40,7 @@ class ofdm_receiver(gr.hier_block2):
     (Van de Beeks).
     """
 
-    def __init__(self, fft_length, cp_length, occupied_tones, snr, ks, threshold, logging=False):
+    def __init__(self, fft_length, cp_length, occupied_tones, snr, ks, threshold, replay, logging=False):
     #def __init__(self, fft_length, cp_length, occupied_tones, snr, ks, logging=False):
         """
 	Hierarchical block for receiving OFDM symbols.
@@ -131,7 +131,7 @@ class ofdm_receiver(gr.hier_block2):
                                                                   cp_length, ks[0])
 
         self.connect(self, self.chan_filt)                            # filter the input channel
-        #self.connect(self.chan_filt, gr.file_sink(gr.sizeof_gr_complex, "rx-filt.dat"))
+        self.connect(self.chan_filt, gr.file_sink(gr.sizeof_gr_complex, "chan-filt.dat"))
 
         use_chan_filt=1
         if use_chan_filt == 0:

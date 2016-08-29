@@ -38,6 +38,8 @@ libgnuradio_digital_la_SOURCES = 		\
 	digital_costas_loop_cc.cc		\
 	digital_cma_equalizer_cc.cc		\
 	digital_crc32.cc			\
+    digital_fec_decode.cc           \
+    digital_fec_encode.cc           \
 	digital_fll_band_edge_cc.cc		\
 	digital_lms_dd_equalizer_cc.cc		\
 	digital_kurtotic_equalizer_cc.cc	\
@@ -46,9 +48,16 @@ libgnuradio_digital_la_SOURCES = 		\
 	digital_ofdm_cyclic_prefixer.cc		\
 	digital_ofdm_frame_acquisition.cc	\
 	digital_ofdm_frame_sink.cc		\
+	digital_ofdm_global.cc		\
+	digital_ofdm_partialcomb_receiver.cc		\
 	digital_ofdm_insert_preamble.cc		\
+	digital_ofdm_deinterleaver.cc		\
+	digital_ofdm_interleaver.cc		\
 	digital_ofdm_mapper_bcv.cc		\
 	digital_ofdm_sampler.cc			\
+	digital_ofdm_rate_adaptation.cc			\
+	digital_ofdm_effsnr_ra.cc			\
+	digital_ofdm_smart_ra.cc			\
 	digital_probe_mpsk_snr_est_c.cc		\
 	digital_gmskmod_bc.cc			\
 	digital_cpmmod_bc.cc
@@ -56,4 +65,4 @@ libgnuradio_digital_la_SOURCES = 		\
 libgnuradio_digital_la_LIBADD =	\
 	$(GNURADIO_CORE_LA)
 
-libgnuradio_digital_la_LDFLAGS = $(NO_UNDEFINED) $(LTVERSIONFLAGS)
+libgnuradio_digital_la_LDFLAGS = $(NO_UNDEFINED) $(LTVERSIONFLAGS) $(ITPPLDFLAGS)

@@ -30,10 +30,10 @@ import sys
 #                              receive path
 # /////////////////////////////////////////////////////////////////////////////
 
-class receive_path(gr.hier_block2):
+class offline_path(gr.hier_block2):
     def __init__(self, rx_callback, fwd_callback, options):
 
-	gr.hier_block2.__init__(self, "receive_path",
+	gr.hier_block2.__init__(self, "offline_path",
 				gr.io_signature(1, 1, gr.sizeof_gr_complex),
 				gr.io_signature(0, 0, 0))
 
@@ -46,7 +46,7 @@ class receive_path(gr.hier_block2):
 	self.fwd_callback = fwd_callback
 
         # receiver
-        self.ofdm_rx = digital.ofdm_demod(options, callback=self._rx_callback)
+        self.ofdm_rx = digital.ofdm_decode(options, callback=self._rx_callback)
         #self.ofdm_rx = digital.ofdm_demod(options,
         #                                  callback=self._rx_callback, fwd_callback = self.fwd_callback)
 
@@ -55,10 +55,8 @@ class receive_path(gr.hier_block2):
         thresh = 30   # in dB, will have to adjust
         self.probe = gr.probe_avg_mag_sqrd_c(thresh,alpha)
 
-        #self.connect(gr.file_source(gr.sizeof_gr_complex, "ofdm_receiver-input.dat"), self.ofdm_rx)
         self.connect(self, self.ofdm_rx)
-        self.connect(self.ofdm_rx, self.probe)
-        #self.connect(self, gr.file_sink(gr.sizeof_gr_complex, "ofdm_receiver-input.dat"))
+        #self.connect(self.ofdm_rx, self.probe)
 
         # Display some information about the setup
         if self._verbose:

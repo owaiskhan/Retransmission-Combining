@@ -280,3 +280,53 @@ consecutive years. These files may often have the format of a year
 range (e.g., "2006 - 2011"), which indicates that these files have had
 copyrightable changes made during each year in the range, inclusive.
 
+
+
+-------------------------------------------------------------------------
+INSTALLATION INSTRUCTIONS
+-------------------------------------------------------------------------
+
+1. installing UHD
+download this tar:
+https://github.com/EttusResearch/UHD-Mirror/tarball/release_003_003_002
+
+untar the file - rename the directory as uhd
+cd uhd/host/
+sudo mkdir build
+cd build
+cmake ..
+sudo make; sudo make install
+
+
+2. installing UDH image
+http://code.ettus.com/redmine/ettus/projects/uhd/wiki/UHD_Linux
+cd uhd/UHD-images-003.003.002-releas/
+mv share/uhd/images/usrp_n200_r4_fpga.bin /usr/local/share/uhd/images/
+mv share/uhd/images/usrp_n200_fw.bin /usr/local/share/uhd/images/
+mv share/uhd/images/bit/usrp_n200_r4_fpga.bit /usr/local/share/uhd/images/bit/
+
+uhd_find_devices
+(default USRP IP: 192.168.10.2)
+
+burn USRP firmware
+cd uhd/host/utils/
+./usrp_n2xx_net_burner_gui.py
+  Firmware Image: usrp_n200_fw.bin
+  FPGA Image    : usrp_n200_r4_fpga.bin
+or using command line 
+sudo ./usrp_n2xx_net_burner.py --addr=192.168.10.5
+--fw=/home/yichao/uhd/UHD-images-003.003.002-release/share/uhd/images/usrp_n200_fw.bin --fpga=/home/yichao/uhd/UHD-images-003.003.002-release/share/uhd/images/usrp_n200_r4_fpga.bin
+
+
+3. installing GNURADIO
+create your own home director
+download the tar file: http://gnuradio.org/redmine/attachments/download/320/gnuradio-3.5.3.tar.gz
+untar the file
+
+in GNURADIO_HOME, run the following:
+  sudo ./configure
+  # ./configure --disable-gr-audio --disable-gr-vocoder --disable-gr-video-sdl --disable-gr-atsc --disable-gr-noaa --disable-gr-pager --disable-gr-wxgui --disable-gr-qtgui --disable-docs --disable-grc
+  ./configure --disable-gr-audio --disable-gr-vocoder --disable-gr-video-sdl --disable-gr-atsc --disable-gr-noaa --disable-gr-pager --disable-docs --disable-grc
+  sudo make -j10; sudo make install
+  sudo make check
+  sudo uhd_usrp_probe
